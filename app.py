@@ -137,6 +137,16 @@ def download_file(filename):
     resultado_path = "/tmp/resultado" if not os.name == "nt" else os.path.join(os.path.expanduser("~"), "Downloads", "resultado")
     return send_from_directory(resultado_path, filename, as_attachment=True)
 
+@app.route("/ver-resultados", methods=["GET"])
+def ver_resultados():
+    resultado_path = "/tmp/resultado" if not os.name == "nt" else os.path.join(os.path.expanduser("~"), "Downloads", "resultado")
+    
+    if not os.path.exists(resultado_path):
+        return jsonify({"archivos_encontrados": []})
+    
+    archivos = os.listdir(resultado_path)
+    return jsonify({"archivos_encontrados": archivos})
+
 # ==============================================
 # 🚀 INICIAR SERVIDOR
 # ==============================================
