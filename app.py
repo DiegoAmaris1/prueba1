@@ -1,6 +1,7 @@
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 import os
 import subprocess
+import shutil
 
 # ==============================================
 # 🔧 CONFIGURACIÓN PRINCIPAL
@@ -34,7 +35,6 @@ for script in EXPECTED_SCRIPTS:
 # ==============================================
 @app.route("/")
 def index():
-    """Carga la interfaz principal"""
     return render_template("procesador-documentos-pdf.html")
 
 # ==============================================
@@ -49,7 +49,7 @@ def check_files():
     return jsonify(files_status)
 
 # ==============================================
-# 📤 SUBIR PDFs (campo HTML: name="pdfFiles")
+# 📤 SUBIR PDFs
 # ==============================================
 @app.route("/upload-pdfs1/<filename>", methods=["POST"])
 def upload_pdfs(filename):
@@ -81,7 +81,7 @@ def upload_pdfs(filename):
     })
 
 # ==============================================
-# ⚙️ EJECUTAR SCRIPT SELECCIONADO Y ENVIAR RESULTADO A DESCARGAS
+# ⚙️ EJECUTAR SCRIPT Y GUARDAR RESULTADO EN DESCARGAS
 # ==============================================
 @app.route("/run-process1/<filename>", methods=["POST"])
 def run_process(filename):
@@ -97,45 +97,45 @@ def run_process(filename):
             cwd=SCRIPTS_PATH
         )
 
-        # 📁 Crear carpeta de resultados según entorno
+        # 📂 Carpeta destino según entorno
         if os.name == "nt":  # Windows local
             resultado_path = os.path.join(os.path.expanduser("~"), "Downloads", "resultado")
         else:  # Render o Linux
             resultado_path = "/tmp/resultado"
-
         os.makedirs(resultado_path, exist_ok=True)
 
-        # 📦 Mover archivos generados (PDF, XLSX, CSV)
+        # 📦 Copiar resultados generados (PDF, XLSX, CSV)
         moved_files = []
         for file in os.listdir(SCRIPTS_PATH):
             if file.lower().endswith((".pdf", ".xlsx", ".csv")):
                 src = os.path.join(SCRIPTS_PATH, file)
                 dst = os.path.join(resultado_path, file)
-                os.replace(src, dst)
+                shutil.copy2(src, dst)
                 moved_files.append(file)
 
-        # 🔗 Construir mensaje de salida
-        if result.returncode == 0:
-            msg = {
-                "message": f"✅ {filename} ejecutado correctamente",
-                "output": result.stdout,
-                "archivos_movidos": moved_files,
-                "carpeta_resultado": resultado_path
-            }
+        # 📎 URL de descarga (solo si Render)
+        render_url = os.environ.get("RENDER_EXTERNAL_URL")
+        download_url = f"{render_url}/download/resultado" if render_url else None
 
-            # Si estás en Render, agrega URL pública (opcional)
-            render_url = os.environ.get("RENDER_EXTERNAL_URL")
-            if render_url:
-                msg["download_url"] = f"{render_url}/download/resultado"
+        # 🧾 Respuesta
+        return jsonify({
+            "message": f"✅ {filename} ejecutado correctamente",
+            "output": result.stdout,
+            "archivos_guardados": moved_files,
+            "carpeta_resultado": resultado_path,
+            "download_url": download_url
+        })
 
-            return jsonify(msg)
-        else:
-            return jsonify({
-                "error": f"❌ Error ejecutando {filename}",
-                "details": result.stderr
-            })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# ==============================================
+# 📥 DESCARGAR RESULTADOS DESDE RENDER
+# ==============================================
+@app.route("/download/resultado/<path:filename>", methods=["GET"])
+def download_file(filename):
+    resultado_path = "/tmp/resultado" if not os.name == "nt" else os.path.join(os.path.expanduser("~"), "Downloads", "resultado")
+    return send_from_directory(resultado_path, filename, as_attachment=True)
 
 # ==============================================
 # 🚀 INICIAR SERVIDOR
