@@ -89,13 +89,22 @@ def run_process(filename):
     if not os.path.exists(script_path):
         return jsonify({"error": f"❌ Archivo {filename} no encontrado"}), 404
 
+    # 🔥 AQUÍ ESTÁ EL FIX: Calcular la carpeta de uploads para este script
+    folder_name = filename.split(".py")[0].replace(" ", "_").replace(".", "_")
+    upload_folder = os.path.join(UPLOADS_PATH, folder_name)
+
     try:
+        # 🔥 PASAR LA CARPETA COMO ARGUMENTO AL SCRIPT
         result = subprocess.run(
-            ["python", script_path],
+            ["python", script_path, upload_folder],  # ✅ Argumento añadido
             capture_output=True,
             text=True,
-            cwd=SCRIPTS_PATH
+            cwd=SCRIPTS_PATH,
+            timeout=300  # 5 minutos máximo
         )
+
+        print(f"📋 STDOUT del script:\n{result.stdout}")
+        print(f"📋 STDERR del script:\n{result.stderr}")
 
         # 📂 Carpeta destino según entorno
         if os.name == "nt":  # Windows local
@@ -104,16 +113,30 @@ def run_process(filename):
             resultado_path = "/tmp/resultado"
         os.makedirs(resultado_path, exist_ok=True)
 
-        # 📦 Copiar resultados generados (PDF, XLSX, CSV)
+        # 🔥 BUSCAR ARCHIVOS EN DOS LUGARES:
+        # 1. En la carpeta de uploads (donde el script los genera)
+        # 2. En la carpeta de scripts (por si acaso)
         moved_files = []
-        for file in os.listdir(SCRIPTS_PATH):
+        
+        # Buscar en carpeta de uploads
+        for file in os.listdir(upload_folder):
             if file.lower().endswith((".pdf", ".xlsx", ".csv")):
+                src = os.path.join(upload_folder, file)
+                dst = os.path.join(resultado_path, file)
+                shutil.copy2(src, dst)
+                moved_files.append(file)
+                print(f"✅ Copiado desde uploads: {file}")
+
+        # Buscar en carpeta de scripts (backup)
+        for file in os.listdir(SCRIPTS_PATH):
+            if file.lower().endswith((".pdf", ".xlsx", ".csv")) and file not in moved_files:
                 src = os.path.join(SCRIPTS_PATH, file)
                 dst = os.path.join(resultado_path, file)
                 shutil.copy2(src, dst)
                 moved_files.append(file)
+                print(f"✅ Copiado desde scripts: {file}")
 
-        # 📎 URL de descarga (solo si Render)
+        # 🔎 URL de descarga (solo si Render)
         render_url = os.environ.get("RENDER_EXTERNAL_URL")
         download_url = f"{render_url}/download/resultado" if render_url else None
 
@@ -121,13 +144,18 @@ def run_process(filename):
         return jsonify({
             "message": f"✅ {filename} ejecutado correctamente",
             "output": result.stdout,
+            "error_output": result.stderr if result.stderr else None,
             "archivos_guardados": moved_files,
             "carpeta_resultado": resultado_path,
-            "download_url": download_url
+            "download_url": download_url,
+            "total_archivos": len(moved_files)
         })
 
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "⏱️ El proceso excedió el tiempo máximo de 5 minutos"}), 500
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"❌ Error completo: {str(e)}")
+        return jsonify({"error": f"Error: {str(e)}"}), 500
 
 # ==============================================
 # 📥 DESCARGAR RESULTADOS DESDE RENDER
@@ -144,7 +172,7 @@ def ver_resultados():
     if not os.path.exists(resultado_path):
         return jsonify({"archivos_encontrados": []})
     
-    archivos = os.listdir(resultado_path)
+    archivos = [f for f in os.listdir(resultado_path) if os.path.isfile(os.path.join(resultado_path, f))]
     return jsonify({"archivos_encontrados": archivos})
 
 # ==============================================
