@@ -1,20 +1,20 @@
-from flask import Flask, jsonify, render_template, request, send_from_directory
+from flask import Flask, jsonify, render_template, request
 import os
 import subprocess
-import shutil
-
-app = Flask(__name__, template_folder="templates")
 
 # ==============================================
-# 🔧 CONFIGURACIÓN DE RUTAS
+# 🔧 CONFIGURACIÓN PRINCIPAL
 # ==============================================
-SCRIPTS_PATH = r"C:\Users\Usuario\Downloads\scripts"
-UPLOADS_PATH = os.path.join(SCRIPTS_PATH, "uploads")
-OUTPUT_PATH = os.path.join(os.path.expanduser("~"), "Downloads")  # carpeta Descargas local
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"))
 
+# 📁 Carpetas de trabajo
+SCRIPTS_PATH = os.path.join(BASE_DIR, "scripts")
+UPLOADS_PATH = os.path.join(BASE_DIR, "uploads")
+os.makedirs(SCRIPTS_PATH, exist_ok=True)
 os.makedirs(UPLOADS_PATH, exist_ok=True)
-os.makedirs(OUTPUT_PATH, exist_ok=True)
 
+# 📜 Lista de scripts esperados
 EXPECTED_SCRIPTS = [
     "1.ERP FC.py",
     "2. FC MUISKA.py",
@@ -24,6 +24,7 @@ EXPECTED_SCRIPTS = [
     "6 CE COMBINADO.py"
 ]
 
+# Crear subcarpetas dentro de uploads (una por script)
 for script in EXPECTED_SCRIPTS:
     folder_name = script.split(".py")[0].replace(" ", "_").replace(".", "_")
     os.makedirs(os.path.join(UPLOADS_PATH, folder_name), exist_ok=True)
@@ -33,6 +34,7 @@ for script in EXPECTED_SCRIPTS:
 # ==============================================
 @app.route("/")
 def index():
+    """Carga la interfaz principal"""
     return render_template("procesador-documentos-pdf.html")
 
 # ==============================================
@@ -47,7 +49,7 @@ def check_files():
     return jsonify(files_status)
 
 # ==============================================
-# 📤 SUBIR PDFs
+# 📤 SUBIR PDFs (campo HTML: name="pdfFiles")
 # ==============================================
 @app.route("/upload-pdfs1/<filename>", methods=["POST"])
 def upload_pdfs(filename):
@@ -79,12 +81,11 @@ def upload_pdfs(filename):
     })
 
 # ==============================================
-# ⚙️ EJECUTAR SCRIPT Y ENVIAR A DESCARGAS
+# ⚙️ EJECUTAR SCRIPT SELECCIONADO
 # ==============================================
 @app.route("/run-process1/<filename>", methods=["POST"])
 def run_process(filename):
     script_path = os.path.join(SCRIPTS_PATH, filename)
-
     if not os.path.exists(script_path):
         return jsonify({"error": f"❌ Archivo {filename} no encontrado"}), 404
 
@@ -96,17 +97,9 @@ def run_process(filename):
             cwd=SCRIPTS_PATH
         )
 
-        # Si el script generó un archivo de salida, lo movemos a Descargas
-        for file in os.listdir(SCRIPTS_PATH):
-            if file.lower().endswith((".xlsx", ".csv", ".pdf")):
-                src_path = os.path.join(SCRIPTS_PATH, file)
-                dest_path = os.path.join(OUTPUT_PATH, file)
-                shutil.move(src_path, dest_path)
-                print(f"📦 Archivo movido a Descargas: {dest_path}")
-
         if result.returncode == 0:
             return jsonify({
-                "message": f"✅ {filename} ejecutado correctamente y enviado a Descargas",
+                "message": f"✅ {filename} ejecutado correctamente",
                 "output": result.stdout
             })
         else:
@@ -118,11 +111,10 @@ def run_process(filename):
         return jsonify({"error": str(e)}), 500
 
 # ==============================================
-# 🚀 EJECUCIÓN DEL SERVIDOR
+# 🚀 INICIAR SERVIDOR
 # ==============================================
 if __name__ == "__main__":
-    print("🚀 Servidor Flask corriendo en: http://127.0.0.1:5000")
-    print("📂 Carpeta de scripts:", SCRIPTS_PATH)
-    print("📁 Carpeta de uploads:", UPLOADS_PATH)
-    print("📤 Carpeta de Descargas:", OUTPUT_PATH)
-    app.run(host="0.0.0.0", port=5000)
+    print("🚀 Servidor Flask corriendo...")
+    print("📂 Scripts:", SCRIPTS_PATH)
+    print("📁 Uploads:", UPLOADS_PATH)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
