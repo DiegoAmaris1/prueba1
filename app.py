@@ -81,7 +81,7 @@ def upload_pdfs(filename):
     })
 
 # ==============================================
-# ⚙️ EJECUTAR SCRIPT SELECCIONADO
+# ⚙️ EJECUTAR SCRIPT SELECCIONADO Y ENVIAR RESULTADO A DESCARGAS
 # ==============================================
 @app.route("/run-process1/<filename>", methods=["POST"])
 def run_process(filename):
@@ -97,11 +97,38 @@ def run_process(filename):
             cwd=SCRIPTS_PATH
         )
 
+        # 📁 Crear carpeta de resultados según entorno
+        if os.name == "nt":  # Windows local
+            resultado_path = os.path.join(os.path.expanduser("~"), "Downloads", "resultado")
+        else:  # Render o Linux
+            resultado_path = "/tmp/resultado"
+
+        os.makedirs(resultado_path, exist_ok=True)
+
+        # 📦 Mover archivos generados (PDF, XLSX, CSV)
+        moved_files = []
+        for file in os.listdir(SCRIPTS_PATH):
+            if file.lower().endswith((".pdf", ".xlsx", ".csv")):
+                src = os.path.join(SCRIPTS_PATH, file)
+                dst = os.path.join(resultado_path, file)
+                os.replace(src, dst)
+                moved_files.append(file)
+
+        # 🔗 Construir mensaje de salida
         if result.returncode == 0:
-            return jsonify({
+            msg = {
                 "message": f"✅ {filename} ejecutado correctamente",
-                "output": result.stdout
-            })
+                "output": result.stdout,
+                "archivos_movidos": moved_files,
+                "carpeta_resultado": resultado_path
+            }
+
+            # Si estás en Render, agrega URL pública (opcional)
+            render_url = os.environ.get("RENDER_EXTERNAL_URL")
+            if render_url:
+                msg["download_url"] = f"{render_url}/download/resultado"
+
+            return jsonify(msg)
         else:
             return jsonify({
                 "error": f"❌ Error ejecutando {filename}",
