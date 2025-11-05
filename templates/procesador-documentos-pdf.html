@@ -693,6 +693,37 @@
                     <span class="upload-status"></span>
                 </form>
                 <button class="execute-btn" onclick="runProcess('1.ERP FC.py')">▶️ Ejecutar</button>
+                   <!-- 🔽 Botón para ver o descargar resultados -->
+<div class="resultado-section" style="margin-top: 20px;">
+  <button id="btn-ver-resultados" class="btn btn-success">📁 Ver Resultados</button>
+  <div id="lista-resultados" style="margin-top:10px;"></div>
+</div>
+
+<script>
+  document.getElementById("btn-ver-resultados").addEventListener("click", async () => {
+    const response = await fetch("/ver-resultados");
+    const data = await response.json();
+
+    const contenedor = document.getElementById("lista-resultados");
+    contenedor.innerHTML = "";
+
+    if (data.archivos_encontrados && data.archivos_encontrados.length > 0) {
+      contenedor.innerHTML = "<h4>📂 Archivos disponibles para descargar:</h4>";
+      data.archivos_encontrados.forEach(file => {
+        const enlace = document.createElement("a");
+        enlace.href = `/download/resultado/${file}`;
+        enlace.textContent = `⬇️ Descargar ${file}`;
+        enlace.className = "btn btn-outline-primary";
+        enlace.style.margin = "5px";
+        enlace.setAttribute("download", file);
+        contenedor.appendChild(enlace);
+      });
+    } else {
+      contenedor.innerHTML = "<p>⚠ No hay resultados generados todavía.</p>";
+    }
+  });
+</script>
+
             </div>
             
             <div class="process-card">
